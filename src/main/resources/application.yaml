@@ -1,0 +1,39 @@
+spring:
+  application:
+    name: SEIM-Backend
+  datasource:
+    url: jdbc:postgresql://${POSTGRES_HOST:localhost}:${POSTGRES_PORT:5432}/${POSTGRES_DB:disaster}
+    username: ${POSTGRES_USER:disaster}
+    password: ${POSTGRES_PASSWORD:disaster}
+  jpa:
+    hibernate:
+      ddl-auto: update
+    open-in-view: false
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    consumer:
+      group-id: sensor-storage
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      properties:
+        spring.json.trusted.packages: com.example.seimbackend.dto
+        spring.json.value.default.type: com.example.seimbackend.dto.SensorReadingEnvelope
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+    listener:
+      auto-startup: true
+
+mqtt:
+  enabled: true
+  broker-url: ${MQTT_BROKER_URL:tcp://localhost:1883}
+  client-id: disaster-backend
+  topic: sensors/+/readings
+
+storage:
+  downsample-enabled: true
+  min-interval-ms: 1000
+
+server:
+  port: 8080
