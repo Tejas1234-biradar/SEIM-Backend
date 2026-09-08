@@ -30,6 +30,7 @@ mqtt:
   broker-url: ${MQTT_BROKER_URL:tcp://localhost:1883}
   client-id: disaster-backend
   topic: sensors/+/readings
+  detection-topic: detections/+/events
 
 storage:
   downsample-enabled: true

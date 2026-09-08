@@ -1,9 +1,12 @@
 package com.example.seimbackend.mqtt;
 
+import com.example.seimbackend.dto.DetectedEventEnvelope;
 import com.example.seimbackend.dto.SensorReadingEnvelope;
+import com.example.seimbackend.kafka.DetectedEventProducer;
 import com.example.seimbackend.kafka.SensorReadingProducer;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.core.type.TypeReference;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import java.util.UUID;
@@ -27,11 +30,12 @@ public class MqttSensorBridge {
 
     private final MqttProperties mqttProperties;
     private final SensorReadingProducer sensorReadingProducer;
+    private final DetectedEventProducer detectedEventProducer;
     private final ObjectMapper objectMapper;
 
     private MqttClient mqttClient;
 
-  public void start() throws MqttException {
+    public void start() throws MqttException {
         if (mqttClient != null && mqttClient.isConnected()) {
             return;
         }
@@ -46,11 +50,13 @@ public class MqttSensorBridge {
         options.setCleanSession(true);
 
         mqttClient.connect(options);
-        mqttClient.subscribe(mqttProperties.getTopic(), messageListener());
+        mqttClient.subscribe(mqttProperties.getTopic(), sensorMessageListener());
+        mqttClient.subscribe(mqttProperties.getDetectionTopic(), detectionMessageListener());
         log.info(
-                "MQTT bridge connected to {} and subscribed to {}",
+            "MQTT bridge connected to {} and subscribed to {} and {}",
                 mqttProperties.getBrokerUrl(),
-                mqttProperties.getTopic());
+                mqttProperties.getTopic(),
+                mqttProperties.getDetectionTopic());
     }
 
     public void stop() {
@@ -67,15 +73,28 @@ public class MqttSensorBridge {
         }
     }
 
-    private IMqttMessageListener messageListener() {
+    private IMqttMessageListener sensorMessageListener() {
         return (topic, message) -> {
             String payload = new String(message.getPayload(), StandardCharsets.UTF_8);
-            log.debug("Received MQTT message on topic {}: {}", topic, payload);
+            log.debug("Received MQTT sensor message on topic {}: {}", topic, payload);
             try {
                 SensorReadingEnvelope envelope = toEnvelope(topic, payload);
                 sensorReadingProducer.publish(envelope);
             } catch (Exception ex) {
-                log.error("Failed to process MQTT message on topic {}", topic, ex);
+                log.error("Failed to process MQTT sensor message on topic {}", topic, ex);
+            }
+        };
+    }
+
+    private IMqttMessageListener detectionMessageListener() {
+        return (topic, message) -> {
+            String payload = new String(message.getPayload(), StandardCharsets.UTF_8);
+            log.debug("Received MQTT detection message on topic {}: {}", topic, payload);
+            try {
+                DetectedEventEnvelope envelope = toDetectionEnvelope(topic, payload);
+                detectedEventProducer.publish(envelope);
+            } catch (Exception ex) {
+                log.error("Failed to process MQTT detection message on topic {}", topic, ex);
             }
         };
     }
@@ -97,7 +116,43 @@ public class MqttSensorBridge {
         envelope.setReadingType(readingType);
         envelope.setStationId(root.path("stationId").asText());
         envelope.setTimestamp(root.path("timestamp").asDouble());
-        envelope.setData(objectMapper.convertValue(root, Map.class));
+        envelope.setData(objectMapper.convertValue(root, new TypeReference<Map<String, Object>>() {}));
+        return envelope;
+    }
+
+    DetectedEventEnvelope toDetectionEnvelope(String topic, String payload) throws Exception {
+        JsonNode root = objectMapper.readTree(payload);
+
+        if (root.has("detectionType") && root.has("data")) {
+            DetectedEventEnvelope envelope = objectMapper.treeToValue(root, DetectedEventEnvelope.class);
+            if (envelope.getEventId() == null) {
+                envelope.setEventId(UUID.randomUUID());
+            }
+            return envelope;
+        }
+
+        String detectionType = extractDetectionType(topic);
+        UUID eventId;
+        if (root.has("eventId") && !root.path("eventId").isNull() && !root.path("eventId").asText().isBlank()) {
+            try {
+                eventId = UUID.fromString(root.path("eventId").asText());
+            } catch (IllegalArgumentException e) {
+                eventId = UUID.randomUUID();
+            }
+        } else {
+            eventId = UUID.randomUUID();
+        }
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> dataMap = objectMapper.convertValue(root, Map.class);
+        if (!dataMap.containsKey("eventId")) {
+            dataMap.put("eventId", eventId.toString());
+        }
+
+        DetectedEventEnvelope envelope = new DetectedEventEnvelope();
+        envelope.setEventId(eventId);
+        envelope.setDetectionType(detectionType);
+        envelope.setData(dataMap);
         return envelope;
     }
 
@@ -108,5 +163,14 @@ public class MqttSensorBridge {
             return parts[1];
         }
         return "Unknown";
+    }
+
+    private String extractDetectionType(String topic) {
+        // Topic pattern: detections/{detectionType}/events
+        String[] parts = topic.split("/");
+        if (parts.length >= 2) {
+            return parts[1];
+        }
+        return "Epicenter";
     }
 }

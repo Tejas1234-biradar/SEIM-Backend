@@ -12,4 +12,5 @@ public class MqttProperties {
     private String brokerUrl = "tcp://localhost:1883";
     private String clientId = "disaster-backend";
     private String topic = "sensors/+/readings";
+    private String detectionTopic = "detections/+/events";
 }

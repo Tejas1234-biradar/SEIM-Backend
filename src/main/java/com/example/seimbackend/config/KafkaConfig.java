@@ -14,4 +14,9 @@ public class KafkaConfig {
     public NewTopic sensorReadingsTopic() {
         return new NewTopic(KafkaTopics.SENSOR_READINGS, 1, (short) 1);
     }
+
+    @Bean
+    public NewTopic detectedEventsTopic() {
+        return new NewTopic(KafkaTopics.DETECTED_EVENTS, 1, (short) 1);
+    }
 }

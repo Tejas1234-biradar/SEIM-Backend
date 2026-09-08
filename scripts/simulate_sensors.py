@@ -26,18 +26,20 @@ SENSORS = [
     ),
     (
         "Gnss",
-        "ST_02",
+        "GNSS_01",
         {
-            "latitude": 35.68,
-            "longitude": 139.76,
-            "altitude_m": 12.5,
+            "displacementX_m": 0.12,
+            "displacementY_m": 0.03,
+            "displacementZ_m": 0.0,
         },
     ),
     (
         "DartBuoy",
         "DB_01",
         {
-            "waterColumnHeight_m": 4012.3,
+            "pressureChange_Pa": 340.5,
+            "estimatedSeaSurfaceHeight_m": 0.28,
+            "reportingMode": 0,
         },
     ),
 ]
